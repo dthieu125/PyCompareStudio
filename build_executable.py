@@ -2,8 +2,10 @@ import argparse
 import os
 import platform
 import shutil
+import stat
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 
@@ -32,9 +34,49 @@ def clean_build_outputs() -> None:
     for name in ("build", "dist"):
         path = ROOT / name
         if path.exists():
-            shutil.rmtree(path)
-    for spec in ROOT.glob("*.spec"):
-        spec.unlink()
+            robust_rmtree(path)
+
+
+def clear_windows_attributes(path: Path) -> None:
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.kernel32.SetFileAttributesW(str(path), 0x80)
+    except Exception:
+        pass
+
+
+def make_writable(path: Path) -> None:
+    try:
+        clear_windows_attributes(path)
+        path.chmod(stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
+    except OSError:
+        pass
+
+
+def robust_rmtree(path: Path) -> None:
+    def on_remove_error(function, value, exc_info):
+        target = Path(value)
+        make_writable(target)
+        function(value)
+
+    for attempt in range(5):
+        try:
+            if os.name == "nt":
+                for child in sorted(path.rglob("*"), key=lambda item: len(item.parts), reverse=True):
+                    make_writable(child)
+                make_writable(path)
+            shutil.rmtree(path, onexc=on_remove_error)
+            return
+        except PermissionError as exc:
+            if attempt == 4:
+                raise SystemExit(
+                    f"Cannot delete {path}: {exc}\n"
+                    "Close any running PyCompareStudio/Python process and pause OneDrive sync, then run build again."
+                ) from exc
+            time.sleep(0.8)
 
 
 def build(args: argparse.Namespace) -> None:
@@ -54,6 +96,8 @@ def build(args: argparse.Namespace) -> None:
         args.name,
         "--noconfirm",
         "--clean",
+        "--specpath",
+        str(ROOT / "build" / "spec"),
     ]
 
     if args.onefile:
