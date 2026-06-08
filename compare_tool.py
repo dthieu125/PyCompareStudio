@@ -274,7 +274,7 @@ def update_windows_compare_label(left_name: str) -> None:
     try:
         import winreg
 
-        key_path = r"Software\Microsoft\Windows\CurrentVersion\Explorer\CommandStore\shell\PyCompareStudio.CompareToLeft"
+        key_path = r"Software\Classes\AllFilesystemObjects\shell\PyCompareStudio\shell\CompareToLeft"
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as key:
             winreg.SetValueEx(key, "MUIVerb", 0, winreg.REG_SZ, f"Compare to {left_name}")
     except OSError:

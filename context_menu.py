@@ -22,6 +22,7 @@ WINDOWS_LEGACY_KEYS = [
 ]
 WINDOWS_KEYS = [
     r"Software\Classes\AllFilesystemObjects\shell\PyCompareStudio",
+    r"Software\Classes\PyCompareStudio.ContextMenu",
     r"Software\Microsoft\Windows\CurrentVersion\Explorer\CommandStore\shell\PyCompareStudio.Compare",
     r"Software\Microsoft\Windows\CurrentVersion\Explorer\CommandStore\shell\PyCompareStudio.CompareToLeft",
     r"Software\Microsoft\Windows\CurrentVersion\Explorer\CommandStore\shell\PyCompareStudio.SelectLeft",
@@ -73,26 +74,25 @@ def install_windows(app_path: Path) -> None:
     validate_app_path(app_path)
     uninstall_windows_registry_keys()
     parent_key = r"Software\Classes\AllFilesystemObjects\shell\PyCompareStudio"
-    subcommands = "PyCompareStudio.Compare;PyCompareStudio.CompareToLeft;PyCompareStudio.SelectLeft"
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, parent_key) as key:
         winreg.SetValueEx(key, "MUIVerb", 0, winreg.REG_SZ, "PyCompareStudio")
         winreg.SetValueEx(key, "Icon", 0, winreg.REG_SZ, str(app_path))
-        winreg.SetValueEx(key, "SubCommands", 0, winreg.REG_SZ, subcommands)
+        winreg.SetValueEx(key, "SubCommands", 0, winreg.REG_SZ, "")
         winreg.SetValueEx(key, "MultiSelectModel", 0, winreg.REG_SZ, "Player")
 
     entries = [
         (
-            r"Software\Microsoft\Windows\CurrentVersion\Explorer\CommandStore\shell\PyCompareStudio.Compare",
+            parent_key + r"\shell\Compare",
             "Compare",
             ["--compare-selected", "%*"],
         ),
         (
-            r"Software\Microsoft\Windows\CurrentVersion\Explorer\CommandStore\shell\PyCompareStudio.CompareToLeft",
+            parent_key + r"\shell\CompareToLeft",
             "Compare to selected left",
             ["--compare-to-left", "%1"],
         ),
         (
-            r"Software\Microsoft\Windows\CurrentVersion\Explorer\CommandStore\shell\PyCompareStudio.SelectLeft",
+            parent_key + r"\shell\SelectLeft",
             "Select left file to compare",
             ["--select-left", "%1"],
         ),
@@ -130,12 +130,27 @@ def uninstall_windows_registry_keys() -> None:
     import winreg
 
     for key_path in WINDOWS_KEYS + WINDOWS_LEGACY_KEYS:
+        delete_registry_tree(winreg.HKEY_CURRENT_USER, key_path)
+
+
+def delete_registry_tree(root, key_path: str) -> None:
+    import winreg
+
+    try:
+        with winreg.OpenKey(root, key_path, 0, winreg.KEY_READ | winreg.KEY_WRITE) as key:
+            while True:
+                try:
+                    child = winreg.EnumKey(key, 0)
+                except OSError:
+                    break
+                delete_registry_tree(root, key_path + "\\" + child)
+    except FileNotFoundError:
+        return
+    try:
+        winreg.DeleteKeyEx(root, key_path)
+    except OSError:
         try:
-            winreg.DeleteKeyEx(winreg.HKEY_CURRENT_USER, key_path + r"\command")
-        except OSError:
-            pass
-        try:
-            winreg.DeleteKeyEx(winreg.HKEY_CURRENT_USER, key_path)
+            winreg.DeleteKey(root, key_path)
         except OSError:
             pass
 
